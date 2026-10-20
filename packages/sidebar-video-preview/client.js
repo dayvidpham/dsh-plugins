@@ -329,8 +329,11 @@ window.__ModuleLoader__.load({
       inject: ['slots', 'locale', 'documentPreviews', 'remote', 'remote.workspaceFiles'],
       apply(ctx) {
         const t = ctx.locale.bind('sidebarVideoPreview');
-        const readRange = (sessionId, path, range, signal) =>
-          ctx.remote.workspaceFiles.readBytes(sessionId, path, { range }, signal);
+        const readRange = async (sessionId, path, range, signal) => {
+          const result = await ctx.remote.workspaceFiles.readBytes(sessionId, path, { range }, signal);
+          if (!result.ok) throw result.error;
+          return result.value;
+        };
 
         ctx.effect(
           () =>
