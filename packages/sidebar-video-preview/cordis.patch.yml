@@ -1,0 +1,3 @@
+- insert:
+    - id: sidebar-video-preview
+      name: '@dsh-plugins/sidebar-video-preview'
