@@ -7,8 +7,8 @@ window.__ModuleLoader__.load({
     /** Renderer identity shared by the preview definition and the keyed document body. */
     const VIDEO_BODY_ID = '@dsh-plugins/sidebar-video-preview/video';
 
-    /** Range-read window kept below the Session file reader's byte-window cap. */
-    const CHUNK_BYTES = 1024 * 1024;
+    /** Range-read window kept at the Session file reader's default 2 MiB window cap. */
+    const CHUNK_BYTES = 2 * 1024 * 1024;
 
     /** Browser-playable video suffixes and the media type each Blob receives. */
     const VIDEO_MEDIA_TYPES = {

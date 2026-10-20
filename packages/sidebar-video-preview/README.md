@@ -21,7 +21,7 @@ The Files tab lists the Session workspace. A video outside it (for example under
 
 ## Limits
 
-- The preview loads the file in 1 MiB range windows through the Session file reader, so the Host's complete-file `maxFileBytes` cap does not apply. The assembled file is held in browser memory, so browser memory is the practical limit.
+- The preview loads the file in 2 MiB range windows, the Session file reader's default window cap, so the Host's complete-file `maxFileBytes` cap does not apply. The assembled file is held in browser memory, so browser memory is the practical limit.
 - The player uses the browser's native `<video>` decoder; Firefox plays H.264 MP4 natively.
 - Only formats the browser can decode natively play. `.avi`, `.mkv`, `.wmv`, and `.flv` are intentionally left to the unsupported-preview state.
 - The preview is read-only and does not transcode.
