@@ -117,6 +117,18 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Summarize a failure for the preview's one-line error state.
+     * @param error - thrown reader error or media error.
+     * @returns a short code-and-message description.
+     */
+    function describeError(error) {
+      if (error === undefined || error === null) return 'unknown error';
+      const code = typeof error.code === 'string' ? error.code : '';
+      const message = typeof error.message === 'string' ? error.message : String(error);
+      return [code, message].filter(Boolean).join(': ').slice(0, 200);
+    }
+
+    /**
      * Read a file in bounded windows. Range windows are independent of the
      * complete-file cap, so a large video no longer fails before playback.
      * @param readRange - Session file-reader callback.
@@ -135,12 +147,13 @@ window.__ModuleLoader__.load({
         if (length <= 0) break;
         const result = await readRange(file.sessionId, file.path, { offset, length }, signal);
         if (signal.aborted) throw new DOMException('The video read was aborted', 'AbortError');
-        const data = result.data;
+        const data = result instanceof Uint8Array ? result : result?.data;
+        if (!(data instanceof Uint8Array)) throw new Error('the file reader returned no bytes');
         if (data.byteLength === 0) break;
         chunks.push(data);
         offset += data.byteLength;
         if (onProgress !== undefined) onProgress(offset, bytes);
-        if (result.eof === true) break;
+        if (result instanceof Uint8Array ? false : result.eof === true) break;
         if (bytes !== undefined && offset >= bytes) break;
         if (data.byteLength < length) break;
       }
@@ -167,6 +180,7 @@ window.__ModuleLoader__.load({
         url: null,
         failed: false,
         progress: 0,
+        detail: null,
       });
 
       React.useEffect(() => {
@@ -174,7 +188,13 @@ window.__ModuleLoader__.load({
         const file = sessionFileOf(resourceAddress);
         if (file === undefined) {
           request.failed();
-          setState({ revision, url: null, failed: true, progress: 0 });
+          setState({
+            revision,
+            url: null,
+            failed: 'read',
+            progress: 0,
+            detail: 'unsupported file address',
+          });
           return undefined;
         }
 
@@ -185,7 +205,7 @@ window.__ModuleLoader__.load({
 
         let url;
         let cancelled = false;
-        setState({ revision, url: null, failed: false, progress: 0 });
+        setState({ revision, url: null, failed: false, progress: 0, detail: null });
 
         (async () => {
           try {
@@ -201,17 +221,30 @@ window.__ModuleLoader__.load({
                     url: null,
                     failed: false,
                     progress: total === undefined || total === 0 ? 0 : read / total,
+                    detail: null,
                   });
                 }
               },
             );
             if (cancelled || controller.signal.aborted) return;
+            const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+            if (total === 0) throw new Error('the file is empty');
+            if (meta.bytes !== undefined && total !== meta.bytes) {
+              throw new Error(`read ${total} of ${meta.bytes} bytes`);
+            }
             url = URL.createObjectURL(new Blob(chunks, { type: mediaType }));
-            setState({ revision, url, failed: false, progress: 1 });
+            setState({ revision, url, failed: false, progress: 1, detail: null });
             request.loaded(meta.version);
-          } catch {
+          } catch (error) {
             if (cancelled || controller.signal.aborted) return;
-            setState({ revision, url: null, failed: true, progress: 0 });
+            console.error('[sidebar-video-preview] could not read the video', error);
+            setState({
+              revision,
+              url: null,
+              failed: 'read',
+              progress: 0,
+              detail: describeError(error),
+            });
             request.failed();
           }
         })();
@@ -225,7 +258,17 @@ window.__ModuleLoader__.load({
       }, [revision, resourceAddress, mediaType, meta?.bytes, meta?.version, readRange, tab.signal]);
 
       React.useEffect(() => {
-        if (request !== undefined && failure !== undefined) request.failed();
+        if (request !== undefined && failure !== undefined) {
+          console.error('[sidebar-video-preview] file metadata failed', failure);
+          request.failed();
+          setState({
+            revision,
+            url: null,
+            failed: 'read',
+            progress: 0,
+            detail: describeError(failure),
+          });
+        }
       }, [failure, revision]);
 
       if (request === undefined || mediaType === undefined) {
@@ -234,7 +277,13 @@ window.__ModuleLoader__.load({
 
       const current = state.revision === revision;
       if (current && state.failed) {
-        return h('p', { style: statusStyle, role: 'alert' }, t('failed'));
+        return h(
+          'p',
+          { style: statusStyle, role: 'alert' },
+          t(state.failed === 'playback' ? 'playbackFailed' : 'readFailed', {
+            detail: state.detail ?? 'unknown error',
+          }),
+        );
       }
       if (!current || state.url === null) {
         const percent = current && state.progress > 0 ? Math.round(state.progress * 100) : undefined;
@@ -257,9 +306,19 @@ window.__ModuleLoader__.load({
           playsInline: true,
           preload: 'metadata',
           'aria-label': t('videoLabel', { name }),
-          onError: () => {
+          onError: (event) => {
+            const mediaError = event.currentTarget.error;
+            console.error('[sidebar-video-preview] media element error', mediaError);
             URL.revokeObjectURL(state.url);
-            setState({ revision, url: null, failed: true, progress: 0 });
+            setState({
+              revision,
+              url: null,
+              failed: 'playback',
+              progress: 0,
+              detail: mediaError
+                ? [mediaError.code, mediaError.message].filter(Boolean).join(': ')
+                : 'unknown media error',
+            });
             request.failed();
           },
         }),
@@ -281,6 +340,8 @@ window.__ModuleLoader__.load({
                 loading: 'Loading video...',
                 preparing: 'Loading video... {percent}%',
                 unsupported: 'This video address cannot be read.',
+                readFailed: 'Could not read this video: {detail}',
+                playbackFailed: 'Firefox could not play this video: {detail}',
                 failed: 'This video could not be played.',
                 videoLabel: 'Video preview: {name}',
               },
@@ -289,6 +350,8 @@ window.__ModuleLoader__.load({
                 loading: '正在加载视频...',
                 preparing: '正在加载视频... {percent}%',
                 unsupported: '无法读取此视频地址',
+                readFailed: '无法读取此视频：{detail}',
+                playbackFailed: 'Firefox 无法播放此视频：{detail}',
                 failed: '无法播放此视频',
                 videoLabel: '视频预览：{name}',
               },
