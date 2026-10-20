@@ -6,7 +6,7 @@ A DeepSeek Harness bundle that plays video files in the right Sidebar's document
 
 ## What it does
 
-The Sidebar document preview currently reports `mp4`, `webm`, `mov`, and similar files as unviewable binaries. This bundle registers a `bytes-complete` document renderer for:
+The Sidebar document preview currently reports `mp4`, `webm`, `mov`, and similar files as unviewable binaries. This bundle registers a `renderer` document preview for:
 
 | Suffix | Media type |
 |---|---|
@@ -17,9 +17,12 @@ The Sidebar document preview currently reports `mp4`, `webm`, `mov`, and similar
 
 Open a video from the Sidebar's **Files** tab (or any file link) and it opens a tab with the browser's native video player: play/pause, seek, volume, fullscreen, and picture-in-picture. Files the browser cannot decode show a localized error instead of a broken surface.
 
+The Files tab lists the Session workspace. A video outside it (for example under `~/.local/share/sfurs`) still opens through a file link that carries its absolute path; reads use the Session filesystem's read authority, which allows file reads outside the workspace.
+
 ## Limits
 
-- The preview reads the complete file through the existing file reader, so it is bounded by the Host's `maxFileBytes` (32 MiB by default). Larger files show the reader's existing "too large" guidance.
+- The preview loads the file in 1 MiB range windows through the Session file reader, so the Host's complete-file `maxFileBytes` cap does not apply. The assembled file is held in browser memory, so browser memory is the practical limit.
+- The player uses the browser's native `<video>` decoder; Firefox plays H.264 MP4 natively.
 - Only formats the browser can decode natively play. `.avi`, `.mkv`, `.wmv`, and `.flv` are intentionally left to the unsupported-preview state.
 - The preview is read-only and does not transcode.
 
